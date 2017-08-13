@@ -16,6 +16,14 @@ mixin draw_table(data, fields)
 			for field in fields
 				td=row[field.fname]
 
+mixin draw_field(data, fields)
+	for row in data
+		tr
+			td=row.id
+				a(href='/kms/template/edit/'+row.fname) edit
+			for field in fields
+				td=row[field.fname]
+
 for table in tables
 	h2=table.title
 	table(border=1)
@@ -24,10 +32,15 @@ for table in tables
 			for field in table.fields
 				th=field.fname
 
-		if table.data
 			-x=JSON.stringify(table.data)
-			//div=x
-			+draw_table(table.data, table.fields)
-	a(href='/kms/new_record') new_record
-	a(href='/kms/table/save') save_table
-	a(href='/kms/table/load') load_table
+
+			if table.title!='fields'
+				if table.data
+					+draw_table(table.data, table.fields)
+			else 
+				+draw_field(table.data, table.fields)
+
+	if table.title!='fields'
+		a(href='/kms/new_record') new_record
+		a(href='/kms/table/save') save_table
+		a(href='/kms/table/load') load_table

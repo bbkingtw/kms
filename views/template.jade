@@ -1,3 +1,7 @@
+style.
+	a {
+		margin-right:5px;
+	}
 script(src='/cdn/jquery')
 
 mixin draw_form(inputs, ovalues)
@@ -13,21 +17,32 @@ mixin draw_form(inputs, ovalues)
 				select.component(id=e.fname, name=e.fname,|
 					nullable=e.nullable, value=oval) 
 					if e.values
-						-xval=typeof e.values=='string'?e.values.split(','):e.values;
+						- xtype=typeof e.values
+
+						if xtype=='string'
+							- xval=e.values.split(',')
+						else
+							- xval=e.values;
+
 						for v in xval
 							if v==oval
-								option(val=v,selected)=v
+								option(val=v selected)=v
 							else
 								option(val=v)=v
 			default
 				- etype=e.encrypted||'no';
 				- etype=(etype=='yes') ? 'password' :'text';
-				input.component(id=e.fname, name=e.fname, type=etype,|
+				input.component(id=e.fname, name=e.fname, type=e.ftype,|
 					nullable=e.nullable, value=oval)
 		br
 
 form(method='post')
 	+draw_form(inputs, values)
+
+a(href='/kms/template/edit/'+prev_field) prev
+a(href='/kms/template/edit/'+next_field) next
+br
+br
 button.submit submit
 
 script.
