@@ -1,0 +1,80 @@
+script(src='/cdn/jquery')
+
+mixin draw_form(inputs, ovalues)
+	for e in inputs
+		if ovalues
+			- oval=ovalues[e.fname];
+
+		label=e.fname
+		br
+		case e.ftype
+			when 'select'
+				- oval=oval||e.default
+				select.component(id=e.fname, name=e.fname,|
+					nullable=e.nullable, value=oval) 
+					if e.values
+						for v in e.values
+							option(val=v)=v
+			default
+				- etype=e.encrypted||'no';
+				- etype=(etype=='true') ? 'password' :'text';
+				input.component(id=e.fname, name=e.fname, type=e.ftype,|
+					nullable=e.nullable, value=oval)
+		br
+
+form(method='post')
+	+draw_form(inputs, values)
+button.submit submit
+
+script.
+	var log=console.log;
+
+	function validate(cb){	
+		var err=null;
+
+		$('.component').map(function(e){
+			var $this=e;
+			var nullable=$(this).attr('nullable')||'yes';
+			var vnull=$(this).val().length==0;
+			var fname=$(this).attr('id');
+			//log(nullable, vnull);
+
+			if (nullable=='no' && vnull) {
+				var warn=$('<span />').addClass('warn')
+					.text('must have value')
+					.css('color','red');
+				$(this).after(warn);
+				$(this).css('background-color','yellow');
+				$(this).focus();
+				if (!err) err=$(this);
+			}
+		});	
+
+		cb(err)
+	}
+
+	$(function(){
+		$('.component').keypress(function(e){
+			if (e.which==13){
+				var index = $('.component').index(this) + 1;
+				$('.component').eq(index).focus();
+			}
+		});
+
+
+		$('button.submit').click(function(e){
+			$('span.warn').remove();
+			e.preventDefault();
+			validate(function(err){
+				log('err',err);
+				if (err) {
+					log('error');
+					$(err).focus();
+				}
+				else {
+					log('submit');
+					$('form').submit();
+				}
+			});
+		});
+	});
