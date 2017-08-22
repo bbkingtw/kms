@@ -1,0 +1,45 @@
+a(href='/kms/config/browse') all configs
+a(href='/kms/rows/browse') all data
+a(href='/kms/fields/browse') all fields
+
+style.
+	a {
+		margin-right:15px;
+	}
+	.hide {
+		display:none;
+	}
+
+hr
+script.
+	function table2json(table,idx) {
+		var myRows = [];
+		var fields=table.find("th").map(function(e){return $(this).text()});
+
+		$(table).find('tbody tr').map(function(j,tr) {
+			var go=true;
+
+			var cols=$(this).find("td");
+			if (j==0) return;
+			if (idx) go=idx==j;
+
+			if (!go) return;
+
+			var row={};
+			cols.map(function(i,e){
+				if (i>cols.length-2) return;
+
+				val=$(this).find('.data').val()
+				if (!val) val=$(this).text()
+
+				row[fields[i]] = val; 
+
+				log(row);
+			});    
+
+			myRows.push(row);
+		});
+
+		//	log(myRows);
+		return myRows;
+	}

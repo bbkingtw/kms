@@ -1,0 +1,165 @@
+include base.jade
+script(src='https://code.jquery.com/jquery-3.2.1.min.js')
+
+style. 
+	body {
+		background-color:#ffdddd;
+	}
+	table {
+		margin:20px;
+	}
+	a {
+		margin:10px;
+	}
+	.modified {
+		background-color:yellow;
+	}
+
+	.hide {
+		display:none;
+	}
+
+mixin draw_table_field(fname, ftype, val, choice)
+	case ftype
+		when 'string'
+			label.data=val
+		when 'select'
+			+tselect.data(ftype, choice, val)
+		default
+			input.data(type=ftype)=val
+
+mixin tselect(fname, values, oval)
+	select.edit
+		for val in values
+			if oval==val
+				option(val=val, selected)=val
+			else
+				option(val=val)=val
+
+mixin draw_fields(data, fields)
+	- x=JSON.stringify(input_types)
+	//div=x
+	for row in data
+		tr
+			for field in fields
+				- val=row[field.fname]
+				case field.fname
+					when 'xftype'
+						td
+							+tselect('ftype', input_types, val)
+					when 'xencrypted'
+						td
+							+tselect('encrypted', ['yes','no'], val||'no')
+					default
+						td=val
+			td 
+				a(href='/kms/single_field/edit/'+row.id) edit
+				a(href='/kms/single_field/delete/'+row.id) delete
+				a(href='/kms/single_field/copy/'+row.id) copy
+				//button.modified.save save
+				//button.modified.cancel cancel
+
+mixin main
+	h2=title
+	table(border=1)
+		tr
+			for field in fields
+				th=field.fname
+
+			-x=JSON.stringify(data)
+
+			th action
+			+draw_fields(data, fields)
+
++main
+a(href='/kms/single_field/new') new field
+
+script.
+	log=console.log;
+
+	$(function(){
+		$('.up').click(function(e){
+			var tr=$(this).closest('tr')
+			var k=$(tr).index()
+			if (k>1) {
+				tr.after($(tr).prev());
+			}
+		});
+		$('.down').click(function(e){
+			var tr=$(this).closest('tr')
+			var k=$(tr).index()
+			if (k<$(tr).closest('table').find('tr').length)
+				tr.before($(tr).next());
+		});
+		$('.save_all_field').click(save_all_field);
+		
+		function save_all_field(){
+			var tab=$('table:last')
+			obj=table2json(tab);
+			log('updateing', obj);
+			alert('go save_all_field');
+
+			$.post('/kms/fields/update_all',{fields:obj}, function(data){
+				log('ret',data);
+				if(data=='done') location.reload();
+			});
+		}
+
+		function save_field(tr){
+			var tab=$(tr).closest('table');
+			obj=table2json(tab, tr.index());
+			log(tr.index, 'obj',obj);
+			alert('go update '+JSON.stringify(obj));
+
+			$.post('/kms/field/update', obj[0], function(data){
+				log('ret',data);
+				if(data=='done') location.reload();
+				log('data',data);
+			});
+		}
+
+		$('button.modified').hide();
+
+		$('.edit').on('focus',function(){
+				previous=this.value;
+				if (!$(this).attr('oldvalue'))
+					$(this).attr('oldvalue',previous);
+		}).change(function(e){
+			var old=$(this).attr('oldvalue');
+
+			if (old != this.value){
+				log('value changed');
+
+				$(this).addClass('modified');
+				$(this).closest('tr').find('button.modified').show();
+			}
+			else{ 
+				log('value same');
+				
+				$(this).removeClass('modified');
+				$(this).closest('tr').find('button.modified').hide();
+			}
+		})
+		
+		$('button.cancel').click(function(e){
+			$(this).closest('tr').find('.modified').map(function(e){
+				this.value=$(this).attr('oldvalue');
+				$(this).attr('oldvalue',null);
+			})
+			$(this).closest('tr').find('.edit').removeClass('modified');
+			$(this).closest('tr').find('.edit').closest('tr').find('button.modified').hide();
+		});
+
+		$('button.save').click(function(e){
+			save_field($(this).closest('tr'), function(err,data){
+				log(err);
+				log('data',data);
+				this.value=$(this).attr('oldvalue');
+				$(this).attr('oldvalue',null);
+			});
+			$(this).closest('tr').find('.edit').removeClass('modified');
+			$(this).closest('tr').find('.edit').closest('tr').find('button.modified').hide();
+		})
+	});
+
+include footer.jade

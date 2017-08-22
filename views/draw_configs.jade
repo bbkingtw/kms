@@ -1,0 +1,45 @@
+script(src='/cdn/jquery')
+script(src='/cdn/moment')
+
+style.
+	.right {
+		text-align:right;
+	}
+
+table(border=1)
+	thead
+		tr
+			th filename
+			th filesize
+			th mod_date
+			th action
+	tbody
+		for file in files
+			tr
+				td
+					a#filename(href='/kms/config/load/#{file.filename}')=file.filename
+				td.right=file.size
+				td.moment=file.mtime
+				td 
+					button.delete_config delete
+
+script.
+	log=console.log;
+	$(function(){
+		$('tr').find('td.moment').map(function(e){
+			var x=$(this).text();
+			$(this).text(moment(x).format('YYYY/MM/DD HH:mm:ss'))
+		});
+		$('.delete_config').click(function(e){
+			var filename=$(this).closest('tr').find('#filename').text();
+			$.post('/kms/config/delete', {filename:filename}, function(data){
+				if (data.status='error') {
+					return alert(data.error);
+				}
+				if (data.status=='done') {
+					alert('done');
+					$(e.target).closest('tr').remove();
+				}
+			})
+		});
+	});

@@ -1,0 +1,215 @@
+script(src='https://code.jquery.com/jquery-3.2.1.min.js')
+include base.jade
+
+style. 
+	body {
+		background-color:ddffdd;
+	}
+
+	table {
+		margin:20px;
+	}
+
+	a {
+		margin:10px;
+	}
+
+	.modified {
+		background-color:yellow;
+	}
+
+	.hide {
+		display:none;
+	}
+
+	.error {
+		background-color:red;
+		color:red;
+	}
+
+
+mixin draw_table_field(fname, ftype, val, choice)
+	case ftype
+		when 'xstring'
+			//label.data=val
+			input.data(name=fname,value=val)=val
+		when 'xselect'
+			+tselect(ftype, choice, val)
+		default
+			//input.data(type=ftype,value=val)=val
+			//label.data(id=fname,type=ftype,value=val)=val
+			td.data(id=fname,type=ftype,value=val)=val
+
+mixin draw_table(data, fields)
+	for row in data
+		tr
+			td#id.hide=row.id
+			for field in fields
+				- x=JSON.stringify(field)
+				-fname=field.fname
+				-ftype=field.ftype
+				-val=row[fname];
+				-choice=field.values||''
+				//td
+					if false
+						div=fname
+						div=ftype
+						div=val
+						div=choice
+				+draw_table_field(fname, ftype, val, choice)
+			td
+				a(href='/kms/single_row/edit/'+row.id) edit
+				a(href='/kms/single_row/delete/'+row.id) delete
+				a(href='/kms/single_row/copy/'+row.id) copy
+
+mixin tselect(fname, xvalues, oval)
+	//#div=xvalues
+
+	if xvalues
+		- values = (typeof xvalues=='string') ? xvalues.split(',') : xvalues
+
+		select.data.edit
+			for val in values
+				if oval==val
+					option(val=val, selected)=val
+				else
+					option(val=val)=val
+	else 
+		div.error=oval 
+		div.error=values	
+
+
+mixin main
+	h2=title
+	table(border=1)
+		tr
+			th.hide id
+			for field in fields
+				th=field.fname
+			th action
+
+			-x=JSON.stringify(data)
+
+			if title!='fields'
+				if data
+					+draw_table(data, fields)
+
+
+	a(href='/kms/single_row/new') new_record
+
++main
+
+script.
+	log=console.log;
+
+
+	$(function(){
+		$('button.edit').click(button_edit_copy);
+
+		function button_edit_copy(e){
+			var cname=$(this).attr('class');
+			var id=$(this).closest('tr').find('td:first').text();
+
+			$.get('/kms/row/'+cname+'/'+id, function(obj){
+				if (obj.status=='done') {
+					log(obj);
+					$('body').append(obj.html);		
+				}
+				else 
+					alert(obj.status);
+			});
+		}
+
+		$('.up').click(function(e){
+			var tr=$(this).closest('tr')
+			var k=$(tr).index()
+			if (k>1) {
+				tr.after($(tr).prev());
+			}
+		});
+
+		$('.down').click(function(e){
+			var tr=$(this).closest('tr')
+			var k=$(tr).index()
+			if (k<$(tr).closest('table').find('tr').length)
+				tr.before($(tr).next());
+		});
+
+		$('.save_all_record').click(save_all_record);
+		
+		function save_all_record(){
+			var tab=$('table')
+			obj=table2json(tab);
+			log('updateing', obj);
+			alert('go save_all_table'+JSON.stringify(obj));
+
+			$.post('/kms/table/update_all',{table:obj}, function(data){
+				alert(data);
+				log('ret',data);
+				if(data=='done') window.location='/kms/table/load';//location.reload();
+			});
+		}
+
+		$('button.modified').hide();
+
+		$('.edit').on('focus',function(){
+				previous=this.value;
+				if (!$(this).attr('oldvalue'))
+					$(this).attr('oldvalue',previous);
+		}).change(function(e){
+			var old=$(this).attr('oldvalue');
+
+			if (old != this.value){
+				log('value changed');
+
+				$(this).addClass('modified');
+				$(this).closest('tr').find('button.modified').show();
+			}
+			else{ 
+				log('value same');
+				
+				$(this).removeClass('modified');
+				$(this).closest('tr').find('button.modified').hide();
+			}
+		})
+
+		$('button.cancel').click(function(e){
+			$(this).closest('tr').find('.modified').map(function(e){
+				this.value=$(this).attr('oldvalue');
+				$(this).attr('oldvalue',null);
+			})
+			$(this).closest('tr').find('.edit').removeClass('modified');
+			$(this).closest('tr').find('.edit').closest('tr').find('button.modified').hide();
+		});
+
+		$('button.save').click(function(e){
+			save_record($(this).closest('tr'), function(err,data){
+				log(err);
+				log('data',data);
+				this.value=$(this).attr('oldvalue');
+				$(this).attr('oldvalue',null);
+			});
+			$(this).closest('tr').find('.edit').removeClass('modified');
+			$(this).closest('tr').find('.edit').closest('tr').find('button.modified').hide();
+		})
+
+		$('tr').map(function(e){
+			$(this).find('td:first').hide();
+			$(this).find('th:first').hide();
+		})
+
+		function save_record(tr){
+			var tab=$(tr).closest('table');
+			obj=table2json(tab, tr.index())[0];
+			log(tr.index, 'obj',obj);
+			alert('go update '+JSON.stringify(obj));
+
+			$.post('/kms/table/update', obj, function(data){
+				log('ret',data);
+				if(data=='done') location.reload();
+				log('data',data);
+			});
+		}
+	});
+
+include footer.jade

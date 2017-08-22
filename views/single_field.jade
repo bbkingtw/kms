@@ -1,20 +1,36 @@
+include base.jade
+
 style.
-	a {
-		margin-right:5px;
+	body {
+		background-color:#ffdddd;
 	}
+	a {
+		margin-right:15px;
+	}
+	.error{
+		background-color:yellow;
+		color:red;
+	}
+	.component {
+		min-width:330px;
+		margin-left:15px;
+		margin-bottom:10px;
+	}
+
 script(src='/cdn/jquery')
 
 mixin draw_form(inputs, ovalues)
 	for e in inputs
 		if ovalues
 			- oval=ovalues[e.fname];
+		- xclass = e.fname=='id' ? 'hide' :'show'
 
-		label=e.fname
-		br
+		label(id=e.fname, class=xclass)=e.fname
+		br(id=e.fname, class=xclass)
 		case e.ftype
 			when 'select'
 				- oval=oval||e.default
-				select.component(id=e.fname, name=e.fname,|
+				select.component(id=e.fname, name=e.fname,class=xclass,|
 					nullable=e.nullable, value=oval) 
 					if e.values
 						- xtype=typeof e.values
@@ -32,18 +48,27 @@ mixin draw_form(inputs, ovalues)
 			default
 				- etype=e.encrypted||'no';
 				- etype=(etype=='yes') ? 'password' :'text';
-				input.component(id=e.fname, name=e.fname, type=e.ftype,|
-					nullable=e.nullable, value=oval)
-		br
+				input.component(id=e.fname, name=e.fname, type=e.ftype, class=xclass,| 
+					nullable=e.nullable, value=oval, class=xclass)
 
+				- err_field=e.fname+'_error'
+				span.error(id=e.fname, xclass=xclass)=values[err_field]
+		br(id=e.fname, class=xclass)
+
+if false
+	- x=JSON.stringify(inputs)
+	- y=JSON.stringify(values)
+	h2 inputs
+	div=x
+	h2 values
+	div=y
 form(method='post')
 	+draw_form(inputs, values)
+	button.submit submit
 
-a(href='/kms/template/edit/'+prev_field) prev
-a(href='/kms/template/edit/'+next_field) next
+a(href='/kms/single_field/edit/'+prev_field) prev_field
+a(href='/kms/single_field/edit/'+next_field) next_field
 br
-br
-button.submit submit
 
 script.
 	var log=console.log;
@@ -73,6 +98,7 @@ script.
 	}
 
 	$(function(){
+
 		$('.component').keypress(function(e){
 			if (e.which==13){
 				var index = $('.component').index(this) + 1;

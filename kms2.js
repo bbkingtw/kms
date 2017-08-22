@@ -1,6 +1,9 @@
 var prettyjson=require('prettyjson');
+var util=require('util')
+var ip=require('ip').address();
 var json2html=require('json2html');
 var chalk=require('chalk');
+var bgYellow=chalk.bgYellow;
 var bgRed=chalk.bgRed.white;
 var fs=require('fs');
 var argv=require('optimist').argv;
@@ -11,6 +14,7 @@ var app=express();
 var bodyparser=require('body-parser');
 var uuid=require('uuid');
 var _=require('lodash');
+//var json2html=require('json-to-html');
 
 var crypto = require('crypto');
 var algorithm = 'aes-256-ctr';
@@ -44,6 +48,9 @@ app.use(function(req,res,next){
 	app.locals.input_types=input_types;
 	if (!req.session.table) req.session.table=[];
 	if (!req.session.fields) req.session.fields=default_fields;
+	req.session.fields.map(function(e){
+		if(!e.id) e.id=uuid();
+	});
 	next();
 });
 
@@ -52,6 +59,10 @@ var util_db=function(table){
 	return {
 		find:function(criteria, cb){
 			ret=_.filter(table, criteria);
+			cb(null, ret);
+		},	
+		findOne:function(criteria, cb){
+			ret=_.filter(table, criteria)[0];
 			cb(null, ret);
 		},	
 		remove:function(criteria, cb){
@@ -84,6 +95,21 @@ app.post('/kms/copy_record/:id', function(req,res,next){
 	req.session.table.push(req.body);
 	next();
 }, save_table, load_table, draw_table);
+
+function locate_row(req,res,next){
+	var db=util_db(req.session.table);
+
+	db.findOne({id:req.params.id}, function(err, obj){
+		if (err) return res.send({err:err});
+		req.row_located=obj;	
+		next();
+	});		
+}
+
+app.get('/kms/row/edit/:id', locate_row, draw_record, function(req,res){
+	res.locals.values=results[0];
+	draw_record(req,res);
+})
 
 app.get('/kms/edit_record/:id', function(req,res){
 	var db=util_db(req.session.table);
@@ -119,14 +145,6 @@ var cfg_fields=[
 	{fname:'values', ftype:'string'}
 ]
 
-function draw_record(req,res,next){
-	req.session.fields.map(function(e){
-		if (!e.id) e.id=uuid();
-	});
-	res.render('form.jade',{
-		inputs:req.session.fields
-	});
-}
 
 function json2table(json) {
 	var ar=[];
@@ -163,34 +181,20 @@ function draw_fields(req,res){
 }
 
 function draw_table(req,res){
-	if(false)
-	req.session.fields.map(function(e){
-		if (!e.id) e.id=uuid();
-	});
-	var tables=[
-		{
-			title:'draw_table',
-			fields:req.session.fields,
-			data:req.session.table
-		},{
-			title:'fields', 
-			fields:cfg_fields,
-			//[
-		//		{fname:'fname', ftype:'string'},
-		//		{fname:'ftype', ftype:'string'},
-		//		{fname:'encrypted', ftype:'string'},
-		//		{fname:'values', ftype:'string'}
-		//	],
-			data:req.session.fields
-		}
-	]
-
-
 	var payload={
 		title:'draw_table',
 		fields:req.session.fields,
 		data:req.session.table
 	}
+
+	var tables=[
+		payload, {
+			title:'fields', 
+			fields:cfg_fields,
+			data:req.session.fields
+		}
+	]
+
 	app.render('draw_table.jade', payload, function(err,html){
 		if (err) {
 			var	data={} 
@@ -230,18 +234,17 @@ app.get('/cdn/:lib', function(req,res){
 	res.sendfile(fname);
 });
 
-var json2html=require('json-to-html');
 
 function convert_json(table, fields, action) {
-	var secret_field=_.filter(fields, {encrypted:'yes'});
-	log('sfield', secret_field);
+	var secret_fields=_.filter(fields, {encrypted:'yes'});
+	log('sfield', secret_fields);
 
 	var out=_.clone(table);
 	log('out', out);
 	
 	if (false)
 	out.map(function(row){
-		secret_field.map(function(e){
+		secret_fields.map(function(e){
 			var sfield=e.fname;
 			log('sfield',sfield);
 			log('oo',row[sfield]);
@@ -284,7 +287,7 @@ app.post('/kms/table/update', function(req,res,next){
 
 app.get('/kms/fields/browse', draw_fields);
 
-app.post('/kms/field/update_all', function(req,res,next){
+app.post('/kms/fields/update_all', function(req,res,next){
 	log('=============>',req.session.fields);
 	req.session.fields=req.body.fields;
 	next();
@@ -293,7 +296,7 @@ app.post('/kms/field/update_all', function(req,res,next){
 	else draw_table(req,res);
 });
 
-app.post('/kms/field/update', function(req,res,next){
+app.post('/kms/fields/update', function(req,res,next){
 	var x=_.filter(req.session.fields,{id:req.body.id})[0];
 	x=_.merge(x, req.body);
 	next();
@@ -320,11 +323,14 @@ function save_table(req,res,next){
 				if (size > 0){
 					log(bgRed('old file exist already, and right now is zero'));
 					log('next() exist', (next));
+
 					if (next) 
 						next();	
 					else {
-						return res.send('can\'t overwrite existing table with null'+
-							'<br><a href="/kms/table/load">load first</a>')
+						return res.send(util.format(
+							'can\'t overwrite existing table(%d records) with null'+
+							'<br><a href="/kms/table/load">load first</a>',size
+						))
 					}
 				}
 				else go_write();
@@ -379,59 +385,137 @@ function load_table(req,res,next){
 		});
 	}
 }
+function locate_field_id(req,res,next){
+	req.field_located=_.filter(req.session.fields,{id:req.params.id})[0];
+	log(bgYellow('session.fields'), req.session.fields);
+	log(bgYellow('req.params.id'), req.params.id);
+	log(bgYellow('field_located'), req.field_located);
 
-app.post('/kms/template/edit/:fname', function(req,res){
-	var x=_.filter(req.session.fields,{fname:req.params.fname})[0];
+	if (!req.field_located) return res.send(json2html.render({
+		err:'no field id='+req.params.id+' exist',
+		cfg_fields:cfg_fields,
+		session_fields:req.session.fields
+	}));
+
+	next();
+}
+
+function draw_record(req,res,next){
+	//req.session.fields.map(function(e){
+	//	if (!e.id) e.id=uuid();
+	//});
+
+	app.render('form.jade',{
+		inputs:req.session.fields
+	}, function(err,html){
+		if (next) {
+			req.html=html;
+			next();
+		}
+		else res.send(html);	
+	});
+}
+
+function draw_single_field(req,res) {
+	var id=req.field_located.id;
+
+	var all_ids=req.session.fields.map(function(e){return e.id});
+
+	var pre=all_ids.indexOf(id)-1;
+	if (pre==-1) pre=all_ids.length-1;
+
+	var pos=all_ids.indexOf(id)+1;
+	if (pos==all_ids.length) pos=0;
+
+	res.render('single_field.jade',{
+		inputs:cfg_fields,
+		values:req.field_located,
+		prev_field:all_ids[pre],
+		next_field:all_ids[pos]
+	});
+}
+
+function debug_field(req,res,next){
+	if (req.query.debug) return res.send(json2html.render({fields:req.session.fields}));
+	next();
+}
+
+app.post('/kms/fields/copy/:id', function(req,res){
+	res.send(req.body);
+});
+
+//app.use('/kms/single_field', debug_field);
+
+app.get('/kms/single_field/delete/:id', locate_field_id, function(req,res,next){
+	log('bbbbbbbbbbbbbb', req.session.fields);
+	log('kill', req.field_located);
+	req.session.fields=_.reject(req.session.fields, req.field_located);
+	log('aaaaaaaaaaaaaaaa', req.session.fields);
+	next();
+}, draw_fields);
+
+app.get('/kms/single_field/copy/:id', locate_field_id, function(req,res,next){
+	req.field_located=_.clone(req.field_located);
+	req.field_located.id=uuid();
+	next()
+}, draw_single_field); 
+
+function warn_uid_exists(field_name) {
+	return function(req,res,next){
+		var q={}
+		q[field_name]=req.body[field_name]
+		var found=_.filter(req.session.fields, q);
+		log('query', q);
+		log('session',req.session.fields);
+		log('found',found);
+
+		var sError;
+
+		var bWarn=found.length>1;
+		if(bWarn) sError='found dup value cnt='+found.length+'>1';
+
+		log('bWarn1',bWarn);
+		log('sError',sError);
+
+		if (!bWarn && found.length==1) {
+			log('found.id',found[0].id);
+			bWarn=found[0].id != req.body.id;
+			log(bgYellow('found id', found[0].id));
+			log(bgYellow('bodyx id', req.body.id));
+			if(bWarn) sError='found dup value at '+JSON.stringify(found[0]);	
+		}
+
+		log('bWarn2',bWarn);
+		log('sError',sError);
+
+		if (bWarn) {
+			req.field_located=req.body;
+			log('before',req.field_located);
+			log(bgRed('error found'));
+			req.field_located[field_name+'_error']=sError;
+			log('after',req.field_located);
+			//return res.send(req.field_located);
+			draw_single_field(req, res);
+		}
+		else 
+			next();
+	}
+}
+
+app.post('/kms/single_field/copy/:id', warn_uid_exists('fname'), function(req,res,next){
+	req.session.fields.push(req.body);	
+	next();
+}, draw_fields);
+
+app.post('/kms/single_field/edit/:id', warn_uid_exists('fname'), function(req,res,next){
+	var x=_.filter(req.session.fields,{id:req.body.id})[0];
 	x=_.merge(x, req.body);
-	save_table(req,res);	
-});
+	next();
 
+}, draw_fields);
 
-app.get('/kms/fields/copy/:id', function(req,res){
-	res.locals.values=_.filter(req.session.fields,{id:req.params.id})[0];
+app.get('/kms/single_field/edit/:id', locate_field_id, draw_single_field);
 
-	if (!res.locals.values) return res.send({
-		err:'no field '+req.params.fname+' exist',
-		cfg_fields:cfg_fields
-	});
-
-	res.locals.values.fname=uuid();
-	var sfields=req.session.fields.map(function(e){return e.fname});
-
-	var pre=sfields.indexOf(req.params.fname)-1;
-	if (pre==-1) pre=sfields.length-1;
-	var pos=sfields.indexOf(req.params.fname)+1;
-	if (pos==sfields.length) pos=0;
-
-	res.render('template.jade',{
-		inputs:cfg_fields,
-		prev_field:sfields[pre],
-		next_field:sfields[pos]
-	});
-});
-
-app.get('/kms/template/edit/:fname', function(req,res){
-	res.locals.values=_.filter(req.session.fields,{fname:req.params.fname})[0];
-
-	if (!res.locals.values) return res.send({
-		err:'no field '+req.params.fname+' exist',
-		cfg_fields:cfg_fields
-	});
-
-	var sfields=req.session.fields.map(function(e){return e.fname});
-	var prev=sfields.indexOf(req.params.fname)-1;
-	if (prev==-1) prev=sfields.length-1;
-	var next=sfields.indexOf(req.params.fname)+1;
-	if (next==sfields.length) next=0;
-
-	res.render('template.jade',{
-		inputs:cfg_fields,
-		prev_field:sfields[prev],
-		next_field:sfields[next]
-	});
-});
-
-var ip=require('ip').address();
 var port=argv.port||8099
 log('listen at',port);
 log('http://localhost:'+port+'/kms');
