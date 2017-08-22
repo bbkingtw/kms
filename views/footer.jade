@@ -2,7 +2,10 @@ hr
 if config_modified
 	h2 config has changed, you can
 	a(href='/kms/config/save') save
-	a.save_as(href='/kms/config/save') save as
+
+a.save_as(href='/kms/config/save') save as
+
+if config_modified
 	a.reload(href='/kms/config/load/#{config_filename}') reload
 
 script.

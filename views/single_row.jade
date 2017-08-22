@@ -45,6 +45,7 @@ mixin draw_form(inputs, ovalues)
 form(method='post', action=action_url)
 	+draw_form(inputs, values)
 	button.submit submit
+	button.cancel cancel
 
 a(href='/kms/single_row/edit/'+prev_row) prev_row
 a(href='/kms/single_row/edit/'+next_row) next_row
@@ -82,6 +83,10 @@ script.
 				var index = $('.component').index(this) + 1;
 				$('.component').eq(index).focus();
 			}
+		});
+
+		$('button.cancel').click(function(e){
+			window.history.back();
 		});
 
 		$('button.submit').click(function(e){

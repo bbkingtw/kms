@@ -1,3 +1,5 @@
+const DO_ENCRYPT=true;
+
 var async=require('async');
 var prettyjson=require('prettyjson');
 var util=require('util')
@@ -51,7 +53,6 @@ app.use(function(req,res,next){
 	log('req.session',req.session)
 
 	if (req.session.config_filename) {
-		log('res',res.locals)
 		app.locals.config_filename=req.session.config_filename;
 		log('app',app.locals)
 		return next();
@@ -89,6 +90,65 @@ var util_db=function(table){
 		}	
 	}	
 };
+
+function get_table_string(table, fields, do_encrypt){
+	var lines=[];
+	do_encrypt=do_encrypt||false;
+
+	var types={}
+	var doenc={}
+	if (fields) fields.map(function(e){
+		types[e.fname]=e.ftype;
+		doenc[e.fname]=e.encrypted=='yes';
+		log('e',e.fname, e.ftype, e.encrypted, doenc[e.fname]);
+	});
+	log(bgRed('do_encrypt',do_encrypt), doenc, fields);
+
+	table.map(function(row){
+		s='';
+		var keys=_.keys(row);
+		var v, v2;
+		var items=[];
+		keys.map(function(k){
+			v=row[k];
+			t=types[k]||'string';
+			//log(k, '==>', t);
+
+			if (t=='number')
+				items.push(util.format('"%s":%s',k,v));
+			else {
+				if (doenc[k] && do_encrypt) v2=encrypt(v); else v2=v;
+				log(bgYellow(v,'==>',v2));
+				items.push(util.format('"%s":"%s"',k,v2));
+			}
+		})
+		lines.push(util.format('{%s}', items.join(',')));
+	})
+	return lines.join(",\n");
+}
+
+
+function change_ext(filename, new_ext) {
+	var sext=path.extname(filename);
+	if (sext.length==0) var ret=filename+sext;
+	else var ret=filename.replace(new RegExp(sext+'$'), new_ext);
+	return ret;
+}
+
+function xsave_encrypt(req,res,next){
+	var t=get_table_string(req.session.table, req.session.fields);
+	var f=get_table_string(req.session.fields);
+	var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
+	fs.createWriteStream(change_ext(req.session.config_filename,'.enc'))
+	return next();
+	try {
+		var obj=JSON.parse(c);
+		return res.send({status:'success', c:c, obj:obj});
+	}
+	catch(err){
+		res.send(util.format('<h2>%s</h2><pre>%s</pre>', err.message, c));
+	}
+}
 
 app.get('/kms/config/browse', function(req,res){
 	fs.readdir(__dirname,function(err,files){
@@ -129,11 +189,11 @@ app.post('/kms/config/delete', function(req,res){
 			status:'error', 
 			error:req.body.filename+' is not exists'
 		});
-
-		fs.unlink(req.body.filename, function(err){
-			if (err) return res.send({status:'error', error:err.message});
-			res.send({status:'done'});
-		});
+		else
+			fs.unlink(req.body.filename, function(err){
+				if (err) return res.send({status:'error', error:err.message});
+				res.send({status:'done'});
+			});
 	})
 });
 
@@ -298,7 +358,7 @@ function save_row(req,res,next){
 	if(x) x=_.merge(x, req.body);
 	else req.session.table.push(req.body);
 
-	save_table(req,res,next)
+	save_file(req,res,next)
 }
 
 function reply_row_data(req,res){
@@ -328,6 +388,11 @@ app.post('/kms/new_record', function(req,res,next){
 	next();
 }, modified, draw_rows);
 
+app.get('/file/:file', function(req,res){
+	var fname=path.join(__dirname, req.params.file);
+	res.sendFile(fname);
+});
+
 app.get('/cdn/jquery.js', function(req,res){
 	var lib=req.params.lib;
 	var fname=path.join(__dirname,'bower_components',lib,'dist',lib+'.js')
@@ -348,13 +413,12 @@ app.get('/cdn/:lib', function(req,res){
 
 
 function convert_json(table, fields, action) {
+	var out=_.clone(table);
+	log('out', out);
+
 	var secret_fields=_.filter(fields, {encrypted:'yes'});
 	log('sfield', secret_fields);
 
-	var out=_.clone(table);
-	log('out', out);
-	
-	if (false)
 	out.map(function(row){
 		secret_fields.map(function(e){
 			var sfield=e.fname;
@@ -382,7 +446,7 @@ app.get('/kms/file/:file', function(req,res,next){
 //	log('=============>',req.session.table);
 //	req.session.table=req.body.table;
 //	next();
-//}, save_table, function(req,res){
+//}, save_file, function(req,res){
 //	if (req.xhr) res.send('done')
 //	else draw_rows(req,res);
 //});
@@ -391,7 +455,7 @@ app.post('/kms/table/update', function(req,res,next){
 	var x=_.filter(req.session.table,{id:req.body.id})[0];
 	x=_.merge(x, req.body);
 	next();
-}, save_table, function(req,res){
+}, save_file, function(req,res){
 	if (req.xhr) res.send('done')
 	else draw_rows(req,res);
 });
@@ -402,7 +466,7 @@ app.post('/kms/fields/update_all', function(req,res,next){
 	log('=============>',req.session.fields);
 	req.session.fields=req.body.fields;
 	next();
-}, save_table, function(req,res){
+}, save_file, function(req,res){
 	if (req.xhr) res.send('done')
 	else draw_rows(req,res);
 });
@@ -411,7 +475,7 @@ app.post('/kms/fields/update', function(req,res,next){
 	var x=_.filter(req.session.fields,{id:req.body.id})[0];
 	x=_.merge(x, req.body);
 	next();
-}, save_table, function(req,res){
+}, save_file, function(req,res){
 	if (req.xhr) res.send('done')
 	else draw_rows(req,res);
 });
@@ -424,9 +488,8 @@ function file_info(fname, cb) {
 	})
 }
 
-function save_table(req,res,next){
-	var out=convert_json(req.session.table, req.session.fields, 'encrypt')
-	var obj={table:out, fields:req.session.fields};
+function save_file(req,res,next){
+	var obj={table:req.session.table, fields:req.session.fields};
 
 	if (req.query.filename) 
 		var filename=req.query.filename; 
@@ -437,17 +500,21 @@ function save_table(req,res,next){
 
 	log('0',filename);
 
-	if (sext=='') 
+	if (sext=='') {
+		enc_file=filename+'.aes';
 		filename=filename+'.cfg';
-	else 
-		filename.replace(new RegExp(sext+'$'), '.cfg');
+	}
+	else {
+		enc_file=filename.replace(new RegExp(sext+'$'), '.aes');
+		filename=filename.replace(new RegExp(sext+'$'), '.cfg');
+	}
 
 	log('1',filename);
 
 	req.session.config_filename=filename;
 
 	fs.exists(req.session.config_filename, function(exists){
-		if (exists && out.length==0){ 
+		if (exists && req.session.table.length==0){ 
 			file_info(req.session.config_filename, function(size){
 				if (size > 0){
 					log(bgRed('old file exist already, and right now is zero'));
@@ -473,10 +540,19 @@ function save_table(req,res,next){
 			};
  
 			//console.log(prettyjson.render(obj, options));
+			var t=get_table_string(req.session.table, req.session.fields);
+			var f=get_table_string(req.session.fields);
+			var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
+			//var nor_filename=req.session.config_filename;
+			fs.createWriteStream(filename).write(c);
 
-			var s=JSON.stringify(obj);
-			log('start to save',s);
-			fs.createWriteStream(req.session.config_filename).write(s);
+			var t=get_table_string(req.session.table, req.session.fields, DO_ENCRYPT);
+			//var f=get_table_string(req.session.fields);
+			var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
+			//var enc_filename=change_ext(req.session.config_filename,'.aes');
+			fs.createWriteStream(enc_file).write(c);
+
+			//fs.createWriteStream(req.session.config_filename).write(c);
 
 			if(next) {
 				log('next exists');
@@ -490,12 +566,12 @@ function save_table(req,res,next){
 	});	
 };
 
-//app.get('/kms/table/load', load_table, draw_rows);
-app.get('/kms/config/load/:file', load_table, reset, draw_rows);
-app.post('/kms/config/save', save_table, reset, draw_rows);
-app.get('/kms/config/save', save_table, reset, draw_rows);
+//app.get('/kms/table/load', load_file, draw_rows);
+app.get('/kms/config/load/:file', load_file, reset, draw_rows);
+app.post('/kms/config/save', save_file, reset, draw_rows);
+app.get('/kms/config/save', save_file, reset, draw_rows);
 
-function load_table(req,res,next){
+function load_file(req,res,next){
 	var fname=req.params.file;
 	log('fname', fname);
 
@@ -515,7 +591,9 @@ function load_table(req,res,next){
 			if (!obj.fields) obj.fields=default_fields;
 
 			req.session.fields=obj.fields;
-			req.session.table=convert_json(obj.table, obj.fields, 'decrypt');
+			req.session.table=obj.table;
+			//todo: use aes if aes presented
+			//convert_json(obj.table, obj.fields, 'decrypt');
 			req.session.dataloaded=true;
 			req.session.config_filename=fname;
 			app.locals.config_filename=fname;
@@ -543,6 +621,7 @@ function draw_single_row(req,res,next){
 
 	var id=req.row_located.id;
 	log(bgYellow('id', id));
+	var prev_row, next_row
 
 	if (id){
 		var all_ids=req.session.table.map(function(e){return e.id});

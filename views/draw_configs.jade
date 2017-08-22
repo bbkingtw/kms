@@ -30,10 +30,13 @@ script.
 			var x=$(this).text();
 			$(this).text(moment(x).format('YYYY/MM/DD HH:mm:ss'))
 		});
+
 		$('.delete_config').click(function(e){
+			e.preventDefault();
 			var filename=$(this).closest('tr').find('#filename').text();
+
 			$.post('/kms/config/delete', {filename:filename}, function(data){
-				if (data.status='error') {
+				if (data.status=='error') {
 					return alert(data.error);
 				}
 				if (data.status=='done') {
