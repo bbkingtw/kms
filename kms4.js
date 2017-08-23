@@ -154,7 +154,7 @@ app.get('/kms/config/browse', function(req,res){
 	fs.readdir(__dirname,function(err,files){
 		files=_.filter(files, function(e){
 			log(e, path.extname(e));
-			return path.extname(e).toLowerCase()=='.cfg'; 
+			return path.extname(e).toLowerCase()==((DO_ENCRYPT)?'.aes':'.cfg'); 
 		});
 		log('files',files);
 		async.map(files, get_file_info, function(err, files){
@@ -423,7 +423,8 @@ function convert_json(table, fields, action) {
 		secret_fields.map(function(e){
 			var sfield=e.fname;
 			log('sfield',sfield);
-			log('oo',row[sfield]);
+			log('row[sfield]',row[sfield]);
+			log('action', action);
 
 			if (action=='encrypt')
 				row[sfield]=encrypt(row[sfield]);
@@ -539,18 +540,18 @@ function save_file(req,res,next){
 				noColor: true
 			};
  
-			//console.log(prettyjson.render(obj, options));
-			var t=get_table_string(req.session.table, req.session.fields);
-			var f=get_table_string(req.session.fields);
-			var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
-			//var nor_filename=req.session.config_filename;
-			fs.createWriteStream(filename).write(c);
-
-			var t=get_table_string(req.session.table, req.session.fields, DO_ENCRYPT);
-			//var f=get_table_string(req.session.fields);
-			var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
-			//var enc_filename=change_ext(req.session.config_filename,'.aes');
-			fs.createWriteStream(enc_file).write(c);
+			/*if (DO_ENCRYPT) {
+				var t=get_table_string(req.session.table, req.session.fields);
+				var f=get_table_string(req.session.fields);
+				var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
+				fs.createWriteStream(filename).write(c);
+			}
+			else {*/
+				var t=get_table_string(req.session.table, req.session.fields, DO_ENCRYPT);
+				var f=get_table_string(req.session.fields);
+				var c=util.format('{\n"table":[\n%s\n],\n"fields":[\n%s\n]\n}',t,f);
+				fs.createWriteStream(enc_file).write(c);
+			//}
 
 			//fs.createWriteStream(req.session.config_filename).write(c);
 
@@ -592,8 +593,10 @@ function load_file(req,res,next){
 
 			req.session.fields=obj.fields;
 			req.session.table=obj.table;
+			log('obj.table', obj.table);
 			//todo: use aes if aes presented
-			//convert_json(obj.table, obj.fields, 'decrypt');
+			if (DO_ENCRYPT) req.session.table=convert_json(obj.table, obj.fields, 'decrypt');
+
 			req.session.dataloaded=true;
 			req.session.config_filename=fname;
 			app.locals.config_filename=fname;
